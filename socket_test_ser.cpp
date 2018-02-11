@@ -60,7 +60,7 @@ void sub_server(int fd)
     // 接收数据  
     while((recv_len = recv(fd, msg, sizeof(msg), 0)) > 0)
     {  
-        printf("recv_buf: %s\n", msg); // 打印数据  
+        cout << "rec_data:"<< msg << endl; // 打印数据  
         send(fd, msg, recv_len, 0); // 给客户端回数据  
     }  
       
