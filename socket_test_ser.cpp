@@ -56,12 +56,13 @@ void sub_server(int fd)
     char msg[MAX_MSG_SIZE] = "";// 接收缓冲区  
     // 解锁，pthread_mutex_lock()唤醒，不阻塞  
     cli_lock.unlock();
-    
-    // 接收数据  
+    // 接收数据
+      
     while((recv_len = recv(fd, msg, sizeof(msg), 0)) > 0)
     {  
         cout << "rec_data:"<< msg << endl; // 打印数据  
-        send(fd, msg, recv_len, 0); // 给客户端回数据  
+        send(fd, msg, recv_len, 0); // 给客户端回数据
+        memset(&msg,0,sizeof(msg));
     }  
       
     printf("client closed!\n");  
