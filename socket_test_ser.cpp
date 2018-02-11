@@ -3,73 +3,98 @@
 #include <netinet/in.h> 
 #include <arpa/inet.h>  
 #include <iostream>
+#include <thread>
+#include <mutex>
 #include <string.h>
 #include <unistd.h>
 
-#define PORT 36599
 #define BACKLOG 2
 #define MAX_MSG_SIZE 256
 
+//pthread_mutex_t mutex; /* 初始化互斥锁 */
+
 using namespace std;
+mutex cli_lock;
 
 class tcp_socket{
     public:
         struct sockaddr_in addr;
-        socklen_t addrlen;
+        socklen_t addr_len;
         int fd;
-        void set_prot(uint16_t in){
-            addr.sin_port = in;
-        }
-        void set_addr(in_addr_t ip){
-            addr.sin_addr.s_addr = ip;
-        }
         void init_socket(uint16_t port,in_addr_t ip){
-            addrlen=sizeof(struct sockaddr_in);
-            bzero(&addr,addrlen);
+            addr_len=sizeof(struct sockaddr_in);
+            bzero(&addr,addr_len);
             addr.sin_family=AF_INET;
-            set_prot(port);
-            set_addr(ip);
+            addr.sin_port = htons(port);
+            addr.sin_addr.s_addr = ip;
             fd=socket(AF_INET,SOCK_STREAM,0);
             if(fd<0){/*创建失败 */    
                 fprintf(stderr,"Socket错误:%s\n",strerror(errno));    
                 exit(1);
             }
-            bind(fd,(struct sockaddr*)&addr,sizeof(struct sockaddr_in));
-            listen(fd,BACKLOG);
+            if(bind(fd,(struct sockaddr*)&addr,sizeof(struct sockaddr_in))!=0)
+            {
+                fprintf(stderr,"bind错误:%s\n",strerror(errno));    
+                exit(1);
+            }
+            if(listen(fd,BACKLOG)!=0)
+            {
+                fprintf(stderr,"listen错误:%s\n",strerror(errno));    
+                exit(1);
+            }
         }
-        
+        void close_socket(){
+            close(fd);
+        }
 };
+
+
+
+void sub_server(int fd)
+{
+    int recv_len = 0;
+    char msg[MAX_MSG_SIZE] = "";// 接收缓冲区  
+    // 解锁，pthread_mutex_lock()唤醒，不阻塞  
+    cli_lock.unlock();
+    
+    // 接收数据  
+    while((recv_len = recv(fd, msg, sizeof(msg), 0)) > 0)
+    {  
+        printf("recv_buf: %s\n", msg); // 打印数据  
+        send(fd, msg, recv_len, 0); // 给客户端回数据  
+    }  
+      
+    printf("client closed!\n");  
+    close(fd);  //关闭已连接套接字  
+}
+
 
 int main(void)
 {
-    char msg_buf[MAX_MSG_SIZE]={0};
-    cout << "启动tcp测试程序" << endl;
-    cout << "请输入本地监听端口号：" << endl;
-    
-    struct sockaddr_in test_ser_addr;
-    struct sockaddr_in test_cli_addr;
-    /* 设定服务端 */
-    socklen_t addrlen=sizeof(struct sockaddr_in);
-    bzero(&test_ser_addr,addrlen);
-    test_ser_addr.sin_family=AF_INET;
-    test_ser_addr.sin_port=htons(PORT);
-    test_ser_addr.sin_addr.s_addr= INADDR_ANY;
-    int socket_test_fd=socket(AF_INET,SOCK_STREAM,0);
-    bind(socket_test_fd,(struct sockaddr*)&test_ser_addr,sizeof(struct sockaddr_in));
-    listen(socket_test_fd,BACKLOG);
-    for(;;){
-        int cli_socket_fd=accept(socket_test_fd,(struct sockaddr*) &test_cli_addr, &addrlen);
-        if(cli_socket_fd<=0){
-            fprintf(stderr,"连接失败:%s\n",strerror(errno));
+    in_port_t port = 0;
+    tcp_socket ser;
+    cout << "请输入端口：" <<endl;
+    std::cin >> port;
+    ser.init_socket(port,htonl(INADDR_ANY));
+    cout << "TCP服务器启动成功！" <<endl;
+    pthread_t pthread_id;
+    while(1){
+        struct sockaddr_in cli_addr;
+        socklen_t cli_addr_len = sizeof(cli_addr);
+        cli_lock.lock();
+        int con_fd = accept(ser.fd, (struct sockaddr*)&cli_addr, &cli_addr_len);
+        if(con_fd < 0)  
+        {  
+            fprintf(stderr,"accept错误:%s\n",strerror(errno));
+            continue;  
         }
-        else{
-            recv(cli_socket_fd, msg_buf, (size_t)MAX_MSG_SIZE, 0); /* 接受数据*/
-            cout << "来自" << test_cli_addr.sin_port << " " << inet_ntoa(test_cli_addr.sin_addr) << "：" <<endl;
-            cout << msg_buf << endl;
-            strcpy(msg_buf," hi,I am server!");    
-            send(cli_socket_fd, msg_buf, sizeof(msg_buf),0); /*发送的数据*/    
-            close(cli_socket_fd);
+        cout << "cli ip:" << inet_ntoa(cli_addr.sin_addr) << " cli prot:" << cli_addr.sin_port << endl;
+        if(con_fd > 0)
+        {
+            thread cli(sub_server,con_fd);
+            cli.detach();
         }
     }
+    ser.close_socket();
     return 0;
 }
