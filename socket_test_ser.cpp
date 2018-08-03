@@ -78,7 +78,6 @@ int main(void)
     std::cin >> port;
     ser.init_socket(port,htonl(INADDR_ANY));
     cout << "TCP服务器启动成功！" <<endl;
-    pthread_t pthread_id;
     while(1){
         struct sockaddr_in cli_addr;
         socklen_t cli_addr_len = sizeof(cli_addr);
